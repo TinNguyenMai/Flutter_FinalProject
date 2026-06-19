@@ -264,7 +264,7 @@ class _MainLayoutState extends State<MainLayout> {
       {'menu': menus[5], 'page': const ForestLogbookPage()}, // Forest Logbook
       {
         'menu': menus[6],
-        'page': const CarbonCalculationPage()
+        'page': CarbonCalculationPage(currentUser: widget.userModel)
       }, // Carbon Calculation
       {'menu': menus[7], 'page': const ReportsPage()}, // Reports
       {'menu': menus[8], 'page': const FilesPage()}, // Files

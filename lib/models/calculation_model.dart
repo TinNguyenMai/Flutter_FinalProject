@@ -15,6 +15,8 @@ class CalculationRecord {
   final double carbonStockTon;
   final double co2EquivalentTon;
   final String status;
+  final String ownerUid;   // UID of the owner who created this
+  final String ownerName;  // Display name of the owner
 
   const CalculationRecord({
     this.id = '',
@@ -31,6 +33,8 @@ class CalculationRecord {
     required this.carbonStockTon,
     required this.co2EquivalentTon,
     required this.status,
+    this.ownerUid = '',
+    this.ownerName = '',
   });
 
   CalculationRecord copyWith({
@@ -48,6 +52,8 @@ class CalculationRecord {
     double? carbonStockTon,
     double? co2EquivalentTon,
     String? status,
+    String? ownerUid,
+    String? ownerName,
   }) {
     return CalculationRecord(
       id: id ?? this.id,
@@ -64,6 +70,8 @@ class CalculationRecord {
       carbonStockTon: carbonStockTon ?? this.carbonStockTon,
       co2EquivalentTon: co2EquivalentTon ?? this.co2EquivalentTon,
       status: status ?? this.status,
+      ownerUid: ownerUid ?? this.ownerUid,
+      ownerName: ownerName ?? this.ownerName,
     );
   }
 
@@ -86,6 +94,8 @@ class CalculationRecord {
       carbonStockTon: (data['carbonStockTon'] as num?)?.toDouble() ?? 0.0,
       co2EquivalentTon: (data['co2EquivalentTon'] as num?)?.toDouble() ?? 0.0,
       status: data['status'] ?? 'Draft',
+      ownerUid: data['ownerUid'] ?? '',
+      ownerName: data['ownerName'] ?? '',
     );
   }
 
@@ -104,7 +114,9 @@ class CalculationRecord {
       'carbonStockTon': carbonStockTon,
       'co2EquivalentTon': co2EquivalentTon,
       'status': status,
-      'createdAt': FieldValue.serverTimestamp(),
+      'ownerUid': ownerUid,
+      'ownerName': ownerName,
+      'createdAt': Timestamp.now(),
     };
   }
 

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/calculation_model.dart';
+import '../models/user_model.dart';
 import '../services/carbon_service.dart';
 import '../services/forest_project_service.dart';
 import '../widgets/app_colors.dart';
 import 'dart:async';
 
 class CarbonCalculationPage extends StatefulWidget {
-  const CarbonCalculationPage({super.key});
+  final UserModel currentUser;
+  const CarbonCalculationPage({super.key, required this.currentUser});
 
   @override
   State<CarbonCalculationPage> createState() => _CarbonCalculationPageState();
@@ -19,10 +21,11 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
   int _currentPage = 1;
 
   // Danh sách dự án được đọc động từ Firebase Forest Projects.
-  // Không còn giới hạn ở 4 dự án cố định.
   final ForestProjectService _forestProjectService = ForestProjectService();
   StreamSubscription? _projectSubscription;
   List<String> _projects = <String>[];
+  // Store full project objects for owner (to avoid adding non-owned projects)
+  List<String> _ownerProjectNames = <String>[];
 
   final Map<String, double> _speciesFactors = {
     'Keo': 0.48,
@@ -33,15 +36,24 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
   CalculationRecord? _selectedRecord;
 
   final CarbonService _carbonService = CarbonService();
+  final int _itemsPerPage = 10;
   StreamSubscription? _subscription;
   List<CalculationRecord> _records = [];
   bool _isLoading = true;
+
+  bool get _isAdmin => widget.currentUser.isAdmin;
+  bool get _isOwner => widget.currentUser.isOwner;
 
   @override
   void initState() {
     super.initState();
 
-    _projectSubscription = _forestProjectService.watchProjects().listen(
+    // For owner: only show their own projects; for admin: show all
+    final projectStream = _isOwner
+        ? _forestProjectService.watchProjectsByOwner(widget.currentUser.uid)
+        : _forestProjectService.watchProjects();
+
+    _projectSubscription = projectStream.listen(
       (projects) {
         if (!mounted) return;
 
@@ -54,10 +66,8 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
 
         setState(() {
           _projects = projectNames;
+          _ownerProjectNames = projectNames;
 
-          // Tự động bổ sung các loại cây đã khai báo trong Forest Projects.
-          // Loại cây mới dùng hệ số mặc định 0.47 và có thể chỉnh lại
-          // bằng nút Species Factors.
           for (final forestProject in projects) {
             final species = forestProject.treeSpecies.trim();
             if (species.isNotEmpty) {
@@ -72,7 +82,12 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
       },
     );
 
-    _subscription = _carbonService.getCalculationsStream().listen(
+    // For owner: only load their own calculations; for admin: load all
+    final calcStream = _isOwner
+        ? _carbonService.getCalculationsStreamByOwner(widget.currentUser.uid)
+        : _carbonService.getCalculationsStream();
+
+    _subscription = calcStream.listen(
       (data) {
         if (!mounted) return;
 
@@ -176,27 +191,31 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                   ? Column(
                       children: [
                         Expanded(child: _buildCalculationSection()),
-                        const Divider(height: 1),
-                        SizedBox(
-                          height: 520,
-                          child: _buildSummarySection(),
-                        ),
+                        if (_isOwner) ...[
+                          const Divider(height: 1),
+                          SizedBox(
+                            height: 520,
+                            child: _buildSummarySection(),
+                          ),
+                        ]
                       ],
                     )
                   : Row(
                       children: [
                         Expanded(
-                          flex: 80,
+                          flex: _isOwner ? 80 : 100,
                           child: _buildCalculationSection(),
                         ),
-                        Container(
-                          width: 1,
-                          color: const Color(0xffe5ebe7),
-                        ),
-                        Expanded(
-                          flex: 20,
-                          child: _buildSummarySection(),
-                        ),
+                        if (_isOwner) ...[
+                          Container(
+                            width: 1,
+                            color: const Color(0xffe5ebe7),
+                          ),
+                          Expanded(
+                            flex: 20,
+                            child: _buildSummarySection(),
+                          ),
+                        ]
                       ],
                     ),
             );
@@ -225,7 +244,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
           const SizedBox(height: 18),
           Expanded(child: _buildTable()),
           const SizedBox(height: 10),
-          _buildPagination(),
+          _buildPagination(_filteredRecords.length),
         ],
       ),
     );
@@ -251,10 +270,10 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                 _currentPage = 1;
               });
             },
-            style: const TextStyle(fontSize: 12.5),
+            style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Search calculations...',
-              hintStyle: const TextStyle(fontSize: 12.5),
+              hintStyle: const TextStyle(fontSize: 14),
               prefixIcon: const Icon(Icons.search, size: 18),
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
@@ -284,7 +303,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             isExpanded: true,
             menuMaxHeight: 320,
             style: const TextStyle(
-              fontSize: 11.5,
+              fontSize: 13,
               color: Color(0xff263029),
             ),
             decoration: _dropdownDecoration(),
@@ -299,7 +318,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 13,
                         color: Color(0xff263029),
                       ),
                     ),
@@ -317,7 +336,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                         project,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11.5),
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ),
@@ -340,7 +359,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             icon: const Icon(Icons.tune, size: 17),
             label: const Text(
               'Species Factors',
-              style: TextStyle(fontSize: 11),
+              style: TextStyle(fontSize: 12.5),
             ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
@@ -361,7 +380,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             label: const Text(
               'New Calculation',
               maxLines: 1,
-              style: TextStyle(fontSize: 11.5),
+              style: TextStyle(fontSize: 13),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
@@ -387,7 +406,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                 children: [
                   projectFilter,
                   configButton,
-                  addButton,
+                  if (_isOwner) addButton,
                 ],
               ),
             ],
@@ -401,8 +420,8 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             projectFilter,
             const SizedBox(width: 10),
             configButton,
-            const Spacer(),
-            addButton,
+            if (_isOwner) ...[const Spacer(), addButton]
+            else const Spacer(),
           ],
         );
       },
@@ -424,7 +443,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
   }
 
   static const TextStyle _headerStyle = TextStyle(
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: FontWeight.w600,
     color: Color(0xff6b7a70),
   );
@@ -457,15 +476,26 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                   width: 0.75,
                 ),
                 defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                columnWidths: const <int, TableColumnWidth>{
-                  0: FlexColumnWidth(1.05),
-                  1: FlexColumnWidth(1.55),
-                  2: FlexColumnWidth(0.95),
-                  3: FlexColumnWidth(1.05),
-                  4: FlexColumnWidth(0.95),
-                  5: FlexColumnWidth(0.80),
-                  6: FixedColumnWidth(44),
-                },
+                columnWidths: _isAdmin
+                    ? const <int, TableColumnWidth>{
+                        0: FlexColumnWidth(1.05),
+                        1: FlexColumnWidth(1.55),
+                        2: FlexColumnWidth(1.20), // Owner
+                        3: FlexColumnWidth(0.95),
+                        4: FlexColumnWidth(1.05),
+                        5: FlexColumnWidth(0.95),
+                        6: FlexColumnWidth(0.80),
+                        7: FixedColumnWidth(44),
+                      }
+                    : const <int, TableColumnWidth>{
+                        0: FlexColumnWidth(1.05),
+                        1: FlexColumnWidth(1.55),
+                        2: FlexColumnWidth(0.95),
+                        3: FlexColumnWidth(1.05),
+                        4: FlexColumnWidth(0.95),
+                        5: FlexColumnWidth(0.80),
+                        6: FixedColumnWidth(44),
+                      },
                 children: <TableRow>[
                   TableRow(
                     decoration: const BoxDecoration(
@@ -474,6 +504,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                     children: <Widget>[
                       _calculationHeaderCell('Calculation Code'),
                       _calculationHeaderCell('Project'),
+                      if (_isAdmin) _calculationHeaderCell('Owner'),
                       _calculationHeaderCell('Calculation Date'),
                       _calculationHeaderCell('Method'),
                       _calculationHeaderCell('Total CO₂e'),
@@ -481,7 +512,13 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                       _calculationHeaderCell(''),
                     ],
                   ),
-                  ...rows.asMap().entries.map((entry) {
+                  ...rows
+                      .skip((_currentPage - 1) * _itemsPerPage)
+                      .take(_itemsPerPage)
+                      .toList()
+                      .asMap()
+                      .entries
+                      .map((entry) {
                     final index = entry.key;
                     final record = entry.value;
                     final selected = _selectedRecord?.id == record.id;
@@ -505,6 +542,12 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                           maxLines: 2,
                           onTap: () => _selectCalculation(record),
                         ),
+                        if (_isAdmin)
+                          _calculationDataCell(
+                            record.ownerName.isNotEmpty ? record.ownerName : 'N/A',
+                            maxLines: 2,
+                            onTap: () => _selectCalculation(record),
+                          ),
                         _calculationDataCell(
                           _formatDate(record.date),
                           textAlign: TextAlign.center,
@@ -548,19 +591,21 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                 _deleteRecord(record);
                               }
                             },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
                                 value: 'view',
                                 child: Text('View detail'),
                               ),
-                              PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Edit'),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Text('Delete'),
-                              ),
+                              if (_isOwner)
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                              if (_isOwner)
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
                             ],
                             child: const Padding(
                               padding: EdgeInsets.all(7),
@@ -595,7 +640,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
         overflow: TextOverflow.ellipsis,
         textAlign: TextAlign.center,
         style: const TextStyle(
-          fontSize: 9.7,
+          fontSize: 11.5,
           height: 1.15,
           fontWeight: FontWeight.w800,
           color: Color(0xff56635b),
@@ -627,7 +672,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             overflow: TextOverflow.ellipsis,
             textAlign: textAlign,
             style: TextStyle(
-              fontSize: 10.2,
+              fontSize: 12,
               height: 1.2,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
               color: const Color(0xff2d3932),
@@ -666,7 +711,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
             'Calculation Summary',
             maxLines: 2,
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 19,
               height: 1.1,
               fontWeight: FontWeight.w800,
               color: Color(0xff17211b),
@@ -712,31 +757,33 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            height: 38,
-            child: ElevatedButton(
-              onPressed: () => _showDetailDialog(record),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
+          if (_isOwner) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 38,
+              child: ElevatedButton(
+                onPressed: () => _showDetailDialog(record),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(5),
+                  ),
                 ),
-              ),
-              child: const Text(
-                'View Detail',
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                child: const Text(
+                  'View Detail',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -754,7 +801,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
               label,
               style: const TextStyle(
                 color: Color(0xff8a958e),
-                fontSize: 10.2,
+                fontSize: 12,
                 height: 1.2,
               ),
             ),
@@ -770,7 +817,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                 textAlign: TextAlign.right,
                 style: const TextStyle(
                   color: Color(0xff263029),
-                  fontSize: 10.4,
+                  fontSize: 12,
                   height: 1.2,
                   fontWeight: FontWeight.w700,
                 ),
@@ -794,7 +841,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 11.5,
+          fontSize: 13,
           color: approved ? const Color(0xff168a45) : const Color(0xfff57c00),
           fontWeight: FontWeight.w700,
         ),
@@ -802,7 +849,10 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
     );
   }
 
-  Widget _buildPagination() {
+  Widget _buildPagination(int totalItems) {
+    final totalPages = (totalItems / _itemsPerPage).ceil();
+    if (totalPages <= 1) return const SizedBox();
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -811,16 +861,16 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
               _currentPage > 1 ? () => setState(() => _currentPage--) : null,
           icon: const Icon(Icons.chevron_left, size: 19),
         ),
-        _pageButton(1),
-        _pageButton(2),
-        _pageButton(3),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text('...'),
-        ),
-        _pageButton(8),
+        for (int i = 1; i <= totalPages; i++)
+          if (i == 1 || i == totalPages || (i >= _currentPage - 1 && i <= _currentPage + 1))
+            _pageButton(i)
+          else if (i == 2 && _currentPage > 3 || i == totalPages - 1 && _currentPage < totalPages - 2)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6),
+              child: Text('...'),
+            ),
         IconButton(
-          onPressed: () => setState(() => _currentPage++),
+          onPressed: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
           icon: const Icon(Icons.chevron_right, size: 19),
         ),
       ],
@@ -856,7 +906,6 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
   Future<void> _showCalculationDialog({
     CalculationRecord? record,
   }) async {
-    const newProjectValue = '__NEW_PROJECT__';
     const newSpeciesValue = '__NEW_SPECIES__';
 
     final isEditing = record != null;
@@ -871,12 +920,12 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
     }.toList()
       ..sort();
 
-    String selectedProject =
+    String? selectedProject =
         record != null && projectOptions.contains(record.project)
             ? record.project
             : projectOptions.isNotEmpty
                 ? projectOptions.first
-                : newProjectValue;
+                : null;
     String selectedSpecies =
         record != null && speciesOptions.contains(record.species)
             ? record.species
@@ -888,7 +937,6 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
     DateTime selectedDate = record?.date ?? DateTime.now();
     bool isSaving = false;
 
-    final newProjectController = TextEditingController();
     final newSpeciesController = TextEditingController();
     final diameterController = TextEditingController(
       text: record?.diameterCm.toStringAsFixed(1) ?? '18',
@@ -1014,6 +1062,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                             labelText: 'Project',
                                             border: OutlineInputBorder(),
                                           ),
+                                          hint: const Text('Chưa có project'),
                                           items: [
                                             ...projectOptions.map(
                                               (value) => DropdownMenuItem(
@@ -1024,12 +1073,6 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                                   overflow:
                                                       TextOverflow.ellipsis,
                                                 ),
-                                              ),
-                                            ),
-                                            const DropdownMenuItem(
-                                              value: newProjectValue,
-                                              child: Text(
-                                                '+ Nhập project mới',
                                               ),
                                             ),
                                           ],
@@ -1083,18 +1126,6 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                       ),
                                     ],
                                   ),
-                                  if (selectedProject == newProjectValue) ...[
-                                    const SizedBox(height: 12),
-                                    TextField(
-                                      controller: newProjectController,
-                                      enabled: !isSaving,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Tên project mới',
-                                        hintText: 'Nhập tên project',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                  ],
                                   if (selectedSpecies == newSpeciesValue) ...[
                                     const SizedBox(height: 12),
                                     TextField(
@@ -1315,10 +1346,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                               onPressed: isSaving
                                   ? null
                                   : () async {
-                                      final project =
-                                          selectedProject == newProjectValue
-                                              ? newProjectController.text.trim()
-                                              : selectedProject;
+                                      final project = selectedProject ?? '';
                                       final species =
                                           selectedSpecies == newSpeciesValue
                                               ? newSpeciesController.text.trim()
@@ -1391,12 +1419,35 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                         carbonStockTon: previewCarbon,
                                         co2EquivalentTon: previewCo2e,
                                         status: status,
+                                        ownerUid: record?.ownerUid ?? widget.currentUser.uid,
+                                        ownerName: record?.ownerName ?? widget.currentUser.fullName,
                                       );
 
                                       try {
                                         if (record == null) {
-                                          await _carbonService
+                                          final newId = await _carbonService
                                               .addCalculation(result);
+                                          if (!mounted) return;
+                                          setState(() {
+                                            _selectedRecord = CalculationRecord(
+                                              id: newId,
+                                              code: result.code,
+                                              project: result.project,
+                                              date: result.date,
+                                              method: result.method,
+                                              species: result.species,
+                                              diameterCm: result.diameterCm,
+                                              heightM: result.heightM,
+                                              quantity: result.quantity,
+                                              speciesFactor: result.speciesFactor,
+                                              totalBiomassKg: result.totalBiomassKg,
+                                              carbonStockTon: result.carbonStockTon,
+                                              co2EquivalentTon: result.co2EquivalentTon,
+                                              status: result.status,
+                                              ownerUid: result.ownerUid,
+                                              ownerName: result.ownerName,
+                                            );
+                                          });
                                         } else {
                                           await _carbonService
                                               .updateCalculation(result);
@@ -1411,6 +1462,7 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
                                           }
                                           _selectedProjectFilter =
                                               'All Projects';
+                                          _currentPage = 1;
                                         });
 
                                         if (dialogContext.mounted) {
@@ -1490,7 +1542,6 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
         );
       }
     } finally {
-      newProjectController.dispose();
       newSpeciesController.dispose();
       diameterController.dispose();
       heightController.dispose();
@@ -1664,17 +1715,18 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showCalculationDialog(record: record);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+            if (_isOwner)
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showCalculationDialog(record: record);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Edit'),
               ),
-              child: const Text('Edit'),
-            ),
           ],
         );
       },
@@ -1710,24 +1762,13 @@ class _CarbonCalculationPageState extends State<CarbonCalculationPage> {
   }
 
   Future<void> _deleteRecord(CalculationRecord record) async {
-    if (_records.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Phải giữ lại ít nhất một phép tính.'),
-        ),
-      );
-      return;
-    }
-
     try {
       await _carbonService.deleteCalculation(record.id);
       if (mounted) {
         setState(() {
           if (_selectedRecord?.id == record.id) {
-            _selectedRecord = _records.firstWhere(
-              (r) => r.id != record.id,
-              orElse: () => _records.first,
-            );
+            final others = _records.where((r) => r.id != record.id);
+            _selectedRecord = others.isNotEmpty ? others.first : null;
           }
         });
       }

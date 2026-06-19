@@ -327,51 +327,57 @@ class _ForestProjectsPageState extends State<ForestProjectsPage> {
     final endIndex = (startIndex + _itemsPerPage).clamp(0, filtered.length);
     final currentRows = filtered.sublist(startIndex, endIndex);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-          child: DataTable(
-            horizontalMargin: 8,
-            columnSpacing: 28,
-            headingRowHeight: 48,
-            dataRowMinHeight: 52,
-            dataRowMaxHeight: 56,
-            headingRowColor: WidgetStateProperty.all(const Color(0xfff7faf8)),
-            columns: const [
-              DataColumn(label: Text('Project ID')),
-              DataColumn(label: Text('Project Name')),
-              DataColumn(label: Text('Owner')),
-              DataColumn(label: Text('Province')),
-              DataColumn(label: Text('Area (ha)')),
-              DataColumn(label: Text('Status')),
-              DataColumn(label: Text('Actions')),
-            ],
-            rows: currentRows.map((p) {
-              final selected = p.id == _selectedProject?.id;
-              void selectProject() {
-                setState(() => _selectedProject = p);
-              }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: width),
+                child: DataTable(
+                  horizontalMargin: 12,
+                  columnSpacing: (width > 800) ? 45 : 28,
+                  headingRowHeight: 48,
+                  dataRowMinHeight: 52,
+                  dataRowMaxHeight: 56,
+                  headingRowColor: WidgetStateProperty.all(const Color(0xfff7faf8)),
+                  columns: const [
+                    DataColumn(label: Text('Project ID')),
+                    DataColumn(label: Text('Project Name')),
+                    DataColumn(label: Text('Owner')),
+                    DataColumn(label: Text('Province')),
+                    DataColumn(label: Text('Area (ha)')),
+                    DataColumn(label: Text('Status')),
+                    DataColumn(label: Text('Actions')),
+                  ],
+                  rows: currentRows.map((p) {
+                    final selected = p.id == _selectedProject?.id;
+                    void selectProject() {
+                      setState(() => _selectedProject = p);
+                    }
 
-              return DataRow(
-                color: WidgetStateProperty.all(
-                  selected ? const Color(0xfff0f9f3) : Colors.transparent,
-                ),
-                cells: [
-                  DataCell(Text(p.projectId), onTap: selectProject),
-                  DataCell(
-                    SizedBox(
-                      width: 155,
-                      child: Text(p.projectName, overflow: TextOverflow.ellipsis),
-                    ),
-                    onTap: selectProject,
-                  ),
-                  DataCell(
-                    SizedBox(
-                      width: 120,
-                      child: Text(p.owner, overflow: TextOverflow.ellipsis),
-                    ),
-                    onTap: selectProject,
-                  ),
+                    return DataRow(
+                      color: WidgetStateProperty.all(
+                        selected ? const Color(0xfff0f9f3) : Colors.transparent,
+                      ),
+                      cells: [
+                        DataCell(Text(p.projectId), onTap: selectProject),
+                        DataCell(
+                          SizedBox(
+                            width: (width > 800) ? 220 : 155,
+                            child: Text(p.projectName, overflow: TextOverflow.ellipsis),
+                          ),
+                          onTap: selectProject,
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: (width > 800) ? 160 : 120,
+                            child: Text(p.owner, overflow: TextOverflow.ellipsis),
+                          ),
+                          onTap: selectProject,
+                        ),
                   DataCell(Text(p.province), onTap: selectProject),
                   DataCell(Text(p.areaHa.toStringAsFixed(1)), onTap: selectProject),
                   DataCell(_statusBadge(p.status), onTap: selectProject),
@@ -433,6 +439,9 @@ class _ForestProjectsPageState extends State<ForestProjectsPage> {
             }).toList(),
           ),
         ),
+        ),
+        );
+      },
     );
   }
 
