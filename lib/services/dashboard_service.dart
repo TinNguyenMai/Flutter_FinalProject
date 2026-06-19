@@ -185,10 +185,10 @@ class DashboardService {
         subscriptions.add(
           _watchFirstAvailableCollection(
             const <String>[
+              'logbook_activities',
               'forest_activities',
               'activities',
               'forest_logbook',
-              'logbook_activities',
             ],
           ).listen(
             (snapshot) {
@@ -435,8 +435,8 @@ class DashboardService {
         user: _readString(
           data,
           const <String>[
-            'user',
             'userName',
+            'user',
             'worker',
             'createdBy',
           ],
@@ -467,7 +467,7 @@ class DashboardService {
       totalTrees: totalTrees,
       estimatedCarbonTon: totalCarbon,
       areaByProvince: provinceAreas,
-      carbonByProject: carbonByProject.take(6).toList(),
+      carbonByProject: carbonByProject.toList(),
       recentActivities: recentActivities.take(6).toList(),
       projectPoints: points.take(20).toList(),
     );

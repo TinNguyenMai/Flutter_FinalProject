@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/inventory_model.dart';
 import '../services/inventory_service.dart';
+import '../services/forest_project_service.dart';
 import '../widgets/app_colors.dart';
 import 'dart:async';
 
@@ -22,11 +23,14 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
   PlotModel? _selectedPlot;
 
   final InventoryService _inventoryService = InventoryService();
+  final ForestProjectService _forestProjectService = ForestProjectService();
   StreamSubscription? _plotsSub;
   StreamSubscription? _treesSub;
+  StreamSubscription? _projectsSub;
 
   List<PlotModel> _plots = [];
   List<TreeModel> _treeData = [];
+  List<String> _projectNames = [];
   bool _isLoading = true;
 
   @override
@@ -51,12 +55,27 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
         });
       }
     });
+
+    // Lấy danh sách project động từ Firebase
+    _projectsSub = _forestProjectService.watchProjects().listen((projects) {
+      if (mounted) {
+        setState(() {
+          _projectNames = projects
+              .map((p) => p.projectName.trim())
+              .where((name) => name.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _plotsSub?.cancel();
     _treesSub?.cancel();
+    _projectsSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -236,47 +255,33 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
           ),
         );
 
+        final allProjectNames = <String>{
+          ..._projectNames,
+          ..._plots.map((p) => p.project.trim()).where((n) => n.isNotEmpty),
+        }.toList()..sort();
+
+        final safeSelectedProject = _selectedProject == 'All Projects' ||
+                allProjectNames.contains(_selectedProject)
+            ? _selectedProject
+            : 'All Projects';
+
         final projectDropdown = SizedBox(
           width: compact ? 190 : 165,
           height: 42,
           child: DropdownButtonFormField<String>(
-            value: _selectedProject,
+            value: safeSelectedProject,
             isExpanded: true,
             decoration: _dropdownDecoration(),
-            items: const [
-              DropdownMenuItem(
-                value: 'All Projects',
-                child: Text(
-                  'All Projects',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              DropdownMenuItem(
-                value: 'Dak Lak Project 01',
-                child: Text(
-                  'Dak Lak Project 01',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              DropdownMenuItem(
-                value: 'Lam Dong Project 02',
-                child: Text(
-                  'Lam Dong Project 02',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              DropdownMenuItem(
-                value: 'Gia Lai Project 01',
-                child: Text(
-                  'Gia Lai Project 01',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+            items: <String>['All Projects', ...allProjectNames]
+                .map((p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(
+                        p,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ))
+                .toList(),
             onChanged: (value) {
               if (value == null) return;
               setState(() {
@@ -762,7 +767,7 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
     final longitudeController = TextEditingController();
     final elevationController = TextEditingController();
 
-    String project = 'Dak Lak Project 01';
+    String project = _projectNames.isNotEmpty ? _projectNames.first : '';
     String status = 'Active';
 
     await showDialog<void>(
@@ -783,31 +788,28 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
                         hint: 'PLT-0006',
                       ),
                       const SizedBox(height: 14),
-                      DropdownButtonFormField<String>(
-                        value: project,
-                        decoration: const InputDecoration(
-                          labelText: 'Project',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Dak Lak Project 01',
-                            child: Text('Dak Lak Project 01'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Lam Dong Project 02',
-                            child: Text('Lam Dong Project 02'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Gia Lai Project 01',
-                            child: Text('Gia Lai Project 01'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          dialogSetState(() => project = value);
-                        },
-                      ),
+                      _projectNames.isEmpty
+                          ? const Text(
+                              'Chưa có dự án. Vui lòng tạo dự án trước.',
+                              style: TextStyle(color: Colors.red),
+                            )
+                          : DropdownButtonFormField<String>(
+                              value: project.isNotEmpty ? project : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Project',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: _projectNames
+                                  .map((p) => DropdownMenuItem(
+                                        value: p,
+                                        child: Text(p),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                dialogSetState(() => project = value);
+                              },
+                            ),
                       const SizedBox(height: 14),
                       Row(
                         children: [

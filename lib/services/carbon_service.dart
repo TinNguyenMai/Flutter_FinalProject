@@ -18,6 +18,23 @@ class CarbonService {
     await _db.collection(_collection).doc(id).delete();
   }
 
+  /// Xóa tất cả carbon calculations thuộc về một project (theo tên project).
+  /// Được gọi khi xóa forest project để đảm bảo dữ liệu đồng bộ.
+  Future<void> deleteCalculationsByProjectName(String projectName) async {
+    if (projectName.trim().isEmpty) return;
+
+    final snapshot = await _db
+        .collection(_collection)
+        .where('project', isEqualTo: projectName.trim())
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+
   /// All calculations — for admin view (read-only)
   Stream<List<CalculationRecord>> getCalculationsStream() {
     return _db
