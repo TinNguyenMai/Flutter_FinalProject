@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/inventory_model.dart';
+import '../models/user_model.dart';
 import '../services/inventory_service.dart';
 import '../services/forest_project_service.dart';
+import '../services/carbon_service.dart';
 import '../widgets/app_colors.dart';
 import 'dart:async';
 
 class ForestInventoryPage extends StatefulWidget {
-  const ForestInventoryPage({super.key});
+  final UserModel currentUser;
+  const ForestInventoryPage({super.key, required this.currentUser});
 
   @override
   State<ForestInventoryPage> createState() => _ForestInventoryPageState();
@@ -24,6 +27,7 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
 
   final InventoryService _inventoryService = InventoryService();
   final ForestProjectService _forestProjectService = ForestProjectService();
+  final CarbonService _carbonService = CarbonService();
   StreamSubscription? _plotsSub;
   StreamSubscription? _treesSub;
   StreamSubscription? _projectsSub;
@@ -33,6 +37,16 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
   List<String> _projectNames = [];
   bool _isLoading = true;
 
+  bool get _isAdmin => widget.currentUser.isAdmin;
+  bool get _isOwner => widget.currentUser.isOwner;
+
+  /// Species factor map dùng cho auto-calculate Carbon
+  final Map<String, double> _speciesFactors = {
+    'Keo': 0.48,
+    'Bạch đàn': 0.47,
+    'Thông': 0.50,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -40,9 +54,7 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
       if (mounted) {
         setState(() {
           _plots = data;
-          if (_plots.isNotEmpty && _selectedPlot == null) {
-            _selectedPlot = _plots.first;
-          }
+          _updateSelectedPlot();
           _isLoading = false;
         });
       }
@@ -57,7 +69,10 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
     });
 
     // Lấy danh sách project động từ Firebase
-    _projectsSub = _forestProjectService.watchProjects().listen((projects) {
+    final projectStream = _isOwner
+        ? _forestProjectService.watchProjectsByOwner(widget.currentUser.uid)
+        : _forestProjectService.watchProjects();
+    _projectsSub = projectStream.listen((projects) {
       if (mounted) {
         setState(() {
           _projectNames = projects
@@ -66,9 +81,35 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
               .toSet()
               .toList()
             ..sort();
+          _updateSelectedPlot();
         });
       }
     });
+  }
+
+  void _updateSelectedPlot() {
+    if (_plots.isEmpty) {
+      _selectedPlot = null;
+      return;
+    }
+
+    final validPlots = _isOwner 
+        ? _plots.where((p) => _projectNames.contains(p.project)).toList()
+        : _plots;
+
+    if (validPlots.isEmpty) {
+      _selectedPlot = null;
+      return;
+    }
+
+    final selectedId = _selectedPlot?.id;
+    final selectedIndex = validPlots.indexWhere(
+      (item) => item.id == selectedId,
+    );
+
+    _selectedPlot = selectedIndex >= 0
+        ? validPlots[selectedIndex]
+        : validPlots.first;
   }
 
   @override
@@ -84,6 +125,8 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
     final keyword = _searchController.text.trim().toLowerCase();
 
     return _plots.where((plot) {
+      if (_isOwner && !_projectNames.contains(plot.project)) return false;
+
       final matchesKeyword =
           keyword.isEmpty ||
           plot.code.toLowerCase().contains(keyword) ||
@@ -108,6 +151,8 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
         (item) => item.code == tree.plotCode,
         orElse: () => const PlotModel(code: '', project: '', area: 0, latitude: 0, longitude: 0, elevation: 0, status: ''),
       );
+
+      if (_isOwner && !_projectNames.contains(plot.project)) return false;
 
       final matchesKeyword =
           keyword.isEmpty ||
@@ -341,6 +386,9 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
           ),
         );
 
+        // Admin không được thêm Tree Data (ẩn nút khi đang ở tab Tree Data)
+        final showAddButton = !(_isAdmin && _selectedTab == 1);
+
         if (compact) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +402,7 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
                 children: [
                   projectDropdown,
                   if (_selectedTab == 0) statusDropdown,
-                  addButton,
+                  if (showAddButton) addButton,
                 ],
               ),
             ],
@@ -370,8 +418,10 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
               const SizedBox(width: 10),
               statusDropdown,
             ],
-            const SizedBox(width: 10),
-            addButton,
+            if (showAddButton) ...[
+              const SizedBox(width: 10),
+              addButton,
+            ],
           ],
         );
       },
@@ -1081,7 +1131,26 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
                     );
                     Navigator.pop(dialogContext);
 
-                    _inventoryService.addTree(newTree);
+                    _inventoryService.addTree(newTree).then((_) {
+                      // Tự động tạo Carbon Calculation khi thêm Tree Data
+                      final plot = _plots.firstWhere((p) => p.code == plotCode);
+                      _carbonService.autoCalculateFromTree(
+                        tree: newTree,
+                        plot: plot,
+                        ownerUid: widget.currentUser.uid,
+                        ownerName: widget.currentUser.fullName,
+                        speciesFactors: _speciesFactors,
+                      ).then((_) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Đã lưu Tree Data và tự động tính Carbon.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      });
+                    });
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -1178,19 +1247,20 @@ class _ForestInventoryPageState extends State<ForestInventoryPage> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
             ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() => _selectedTab = 1);
-                _showAddTreeDialog();
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Tree Data'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+            if (!_isAdmin)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedTab = 1);
+                  _showAddTreeDialog();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Tree Data'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
               ),
-            ),
           ],
         );
       },

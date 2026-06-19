@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../models/user_model.dart';
 import '../services/dashboard_service.dart';
 import '../widgets/app_colors.dart';
 import '../widgets/notification_bell.dart';
@@ -10,9 +11,11 @@ import '../widgets/notification_bell.dart';
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
+    required this.currentUser,
     required this.onOpenNotifications,
   });
 
+  final UserModel currentUser;
   final VoidCallback onOpenNotifications;
 
   @override
@@ -42,6 +45,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _refreshDashboardStream() {
     _dashboardStream = _dashboardService.watchDashboard(
       _selectedDateRange,
+      widget.currentUser,
     );
   }
 

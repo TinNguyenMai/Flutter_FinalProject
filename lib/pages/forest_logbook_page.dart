@@ -6,11 +6,13 @@ import '../services/forest_project_service.dart';
 import '../services/logbook_service.dart';
 import '../services/notification_service.dart';
 import '../services/user_service.dart';
+import '../models/user_model.dart';
 import '../widgets/app_colors.dart';
 import 'dart:async';
 
 class ForestLogbookPage extends StatefulWidget {
-  const ForestLogbookPage({super.key});
+  final UserModel currentUser;
+  const ForestLogbookPage({super.key, required this.currentUser});
 
   @override
   State<ForestLogbookPage> createState() => _ForestLogbookPageState();
@@ -36,6 +38,8 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
   List<ActivityRecord> _activities = [];
   List<String> _projectNames = [];
   bool _isLoading = true;
+
+  bool get _isOwner => widget.currentUser.isOwner;
 
   Future<void> _loadUserNames(List<ActivityRecord> activities) async {
     bool updated = false;
@@ -80,20 +84,7 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
         setState(() {
           _activities = data;
           _loadUserNames(data);
-
-          if (_activities.isEmpty) {
-            _selectedActivity = null;
-          } else {
-            final selectedId = _selectedActivity?.id;
-            final selectedIndex = _activities.indexWhere(
-              (item) => item.id == selectedId,
-            );
-
-            _selectedActivity = selectedIndex >= 0
-                ? _activities[selectedIndex]
-                : _activities.first;
-          }
-
+          _updateSelectedActivity();
           _isLoading = false;
         });
       },
@@ -122,7 +113,10 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
     );
 
     // Lấy danh sách project động từ Firebase
-    _projectsSub = _forestProjectService.watchProjects().listen((projects) {
+    final projectStream = _isOwner
+        ? _forestProjectService.watchProjectsByOwner(widget.currentUser.uid)
+        : _forestProjectService.watchProjects();
+    _projectsSub = projectStream.listen((projects) {
       if (mounted) {
         setState(() {
           _projectNames = projects
@@ -131,9 +125,35 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
               .toSet()
               .toList()
             ..sort();
+          _updateSelectedActivity();
         });
       }
     });
+  }
+
+  void _updateSelectedActivity() {
+    if (_activities.isEmpty) {
+      _selectedActivity = null;
+      return;
+    }
+
+    final validActivities = _isOwner 
+        ? _activities.where((a) => _projectNames.contains(a.project)).toList()
+        : _activities;
+
+    if (validActivities.isEmpty) {
+      _selectedActivity = null;
+      return;
+    }
+
+    final selectedId = _selectedActivity?.id;
+    final selectedIndex = validActivities.indexWhere(
+      (item) => item.id == selectedId,
+    );
+
+    _selectedActivity = selectedIndex >= 0
+        ? validActivities[selectedIndex]
+        : validActivities.first;
   }
 
   @override
@@ -168,7 +188,11 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
   List<WeekOption> get _weekOptions {
     final starts = <DateTime>{_startOfWeek(DateTime.now())};
 
-    for (final activity in _activities) {
+    final validActivities = _isOwner 
+        ? _activities.where((a) => _projectNames.contains(a.project))
+        : _activities;
+
+    for (final activity in validActivities) {
       starts.add(_startOfWeek(activity.date));
     }
 
@@ -187,6 +211,8 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
     final keyword = _searchController.text.trim().toLowerCase();
 
     return _activities.where((activity) {
+      if (_isOwner && !_projectNames.contains(activity.project)) return false;
+
       final matchesSearch = keyword.isEmpty ||
           activity.user.toLowerCase().contains(keyword) ||
           activity.location.toLowerCase().contains(keyword) ||
@@ -279,11 +305,13 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
     final safeSelectedWeek =
         selectedWeekExists ? _selectedWeekKey : 'ALL_WEEKS';
 
-    final projectOptions = _activities
-        .map((activity) => activity.project)
-        .toSet()
-        .toList()
-      ..sort();
+    final projectOptions = _isOwner 
+        ? _projectNames
+        : _activities
+            .map((activity) => activity.project)
+            .toSet()
+            .toList()
+          ..sort();
 
     final safeSelectedProject = _selectedProject == 'All Projects' ||
             projectOptions.contains(_selectedProject)
