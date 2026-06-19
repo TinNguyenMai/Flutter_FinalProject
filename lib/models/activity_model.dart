@@ -31,6 +31,7 @@ class ActivityRecord {
   final DateTime date;
   final String activityType;
   final String user;
+  final String userName;
   final String project;
   final String location;
   final double latitude;
@@ -43,6 +44,7 @@ class ActivityRecord {
     required this.date,
     required this.activityType,
     required this.user,
+    this.userName = '',
     required this.project,
     required this.location,
     required this.latitude,
@@ -56,6 +58,7 @@ class ActivityRecord {
     DateTime? date,
     String? activityType,
     String? user,
+    String? userName,
     String? project,
     String? location,
     double? latitude,
@@ -68,6 +71,7 @@ class ActivityRecord {
       date: date ?? this.date,
       activityType: activityType ?? this.activityType,
       user: user ?? this.user,
+      userName: userName ?? this.userName,
       project: project ?? this.project,
       location: location ?? this.location,
       latitude: latitude ?? this.latitude,
@@ -86,6 +90,7 @@ class ActivityRecord {
       date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
       activityType: data['activityType'] ?? 'Unknown',
       user: data['user'] ?? '',
+      userName: data['userName'] ?? '',
       project: data['project'] ?? '',
       location: data['location'] ?? '',
       latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
@@ -103,6 +108,7 @@ class ActivityRecord {
       'date': Timestamp.fromDate(date),
       'activityType': activityType,
       'user': user,
+      'userName': userName,
       'project': project,
       'location': location,
       'latitude': latitude,
@@ -119,6 +125,7 @@ class ActivityRecord {
       date: DateTime.now(),
       activityType: '',
       user: '',
+      userName: '',
       project: '',
       location: '',
       latitude: 0,

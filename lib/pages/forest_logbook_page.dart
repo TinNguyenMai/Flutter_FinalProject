@@ -445,11 +445,9 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
       );
     }
 
-    return Scrollbar(
-      thumbVisibility: true,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
           child: DataTable(
             horizontalMargin: 8,
             columnSpacing: 20,
@@ -497,7 +495,7 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
                     SizedBox(
                       width: 105,
                       child: Text(
-                        activity.user,
+                        activity.userName.isNotEmpty ? activity.userName : activity.user,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -562,8 +560,7 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
             }).toList(),
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _activityBadge(String type) {
@@ -700,7 +697,7 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
                               'Date',
                               _formatDateTime(selected.date),
                             ),
-                            _detailRow('User', selected.user),
+                            _detailRow('User', selected.userName.isNotEmpty ? selected.userName : selected.user),
                             _detailRow('Project', selected.project),
                             _detailRow('Location', selected.location),
                             _detailRow(
@@ -1266,6 +1263,7 @@ class _ForestLogbookPageState extends State<ForestLogbookPage> {
                       date: selectedDate,
                       activityType: activityType,
                       user: user,
+                      userName: activity?.userName ?? user,
                       project: project,
                       location: location,
                       latitude: latitude,

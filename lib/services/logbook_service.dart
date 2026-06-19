@@ -105,7 +105,7 @@ class LogbookService {
   Stream<List<ActivityRecord>> getActivitiesStream() {
     return _db
         .collection(_collection)
-        .orderBy('createdAt', descending: true)
+        .orderBy('date', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => ActivityRecord.fromFirestore(doc))
