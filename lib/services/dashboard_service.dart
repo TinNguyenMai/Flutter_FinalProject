@@ -155,6 +155,7 @@ class DashboardService {
         subscriptions.add(
           _watchFirstAvailableCollection(
             const <String>[
+              'inventory_trees',
               'forest_inventory',
               'forest_inventory_tree_data',
               'inventory',
