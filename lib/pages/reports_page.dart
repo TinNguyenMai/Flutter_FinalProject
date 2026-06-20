@@ -922,24 +922,39 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<_PdfReportData> _buildInventoryData() async {
-    final documents = await _readFirstNonEmptyCollection(
-      <String>[
-        'inventory_trees',
-        'forest_inventory',
-        'forest_inventory_tree_data',
-        'inventory',
-        'tree_data',
-      ],
-    );
+    final plotsSnapshot = await _firestore.collection('inventory_plots').get();
+    final plotProjectMap = <String, String>{};
+    for (var doc in plotsSnapshot.docs) {
+      final data = doc.data();
+      final project = _readString(data, <String>['project', 'projectName']);
+      plotProjectMap[doc.id] = project;
+      final plotCode = _readString(data, <String>['code', 'plotCode', 'plot']);
+      if (plotCode.isNotEmpty) {
+        plotProjectMap[plotCode] = project;
+      }
+    }
+
+    final snapshot = await _firestore.collection('inventory_trees').get();
+    final documents = snapshot.docs.map((d) => d.data()).toList();
 
     final rows = <List<String>>[];
     int totalQuantity = 0;
 
     for (final document in documents) {
-      final project = _readString(
+      String project = _readString(
         document,
         <String>['project', 'projectName'],
       );
+      
+      final plotId = _readString(document, <String>['plotId']);
+      final plotCodeDoc = _readString(document, <String>['plotCode', 'code', 'plot']);
+      
+      if (project.isEmpty && plotId.isNotEmpty) {
+        project = plotProjectMap[plotId] ?? '';
+      }
+      if (project.isEmpty && plotCodeDoc.isNotEmpty) {
+        project = plotProjectMap[plotCodeDoc] ?? '';
+      }
       final date = _readDate(
         document,
         <String>['date', 'createdAt', 'updatedAt'],
@@ -950,10 +965,7 @@ class _ReportsPageState extends State<ReportsPage> {
         continue;
       }
 
-      final plot = _readString(
-        document,
-        <String>['plotCode', 'code', 'plot'],
-      );
+      final plot = plotCodeDoc.isNotEmpty ? plotCodeDoc : plotId;
       final species = _readString(
         document,
         <String>['species', 'treeSpecies'],
@@ -1007,14 +1019,8 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<_PdfReportData> _buildActivityData() async {
-    final documents = await _readFirstNonEmptyCollection(
-      <String>[
-        'logbook_activities',
-        'forest_activities',
-        'activities',
-        'forest_logbook',
-      ],
-    );
+    final snapshot = await _firestore.collection('logbook_activities').get();
+    final documents = snapshot.docs.map((d) => d.data()).toList();
 
     final rows = <List<String>>[];
 
