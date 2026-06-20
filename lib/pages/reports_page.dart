@@ -1359,7 +1359,7 @@ class _ReportsPageState extends State<ReportsPage> {
     bool allowMissingDate = false,
   }) {
     if (date == null) {
-      return allowMissingDate && _dateFrom == null && _dateTo == null;
+      return allowMissingDate;
     }
 
     final normalizedDate = DateTime(date.year, date.month, date.day);
